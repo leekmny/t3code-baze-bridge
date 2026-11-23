@@ -4,7 +4,7 @@ import { link, lstat, mkdir, open, readFile, realpath, rename, unlink } from 'no
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { applyEdits, createScanner, getNodeValue, modify, parseTree, SyntaxKind } from 'jsonc-parser';
-import { providerIds } from './catalog.mjs';
+import { providerEnv, providerIds } from './catalog.mjs';
 
 const marker = '// t3code-baze-bridge: ';
 const maxBytes = 12 * 1024 * 1024;
@@ -151,19 +151,21 @@ function copyWindowsAccessRules(source, target) {
   const script = `
 $ErrorActionPreference = 'Stop'
 $access = [System.Security.AccessControl.AccessControlSections]::Access
-$sourceAcl = Get-Acl -LiteralPath $env:BAZE_BRIDGE_ACL_SOURCE
-$targetAcl = Get-Acl -LiteralPath $env:BAZE_BRIDGE_ACL_TARGET
+$sourceAcl = [System.IO.File]::GetAccessControl($env:BAZE_BRIDGE_ACL_SOURCE, $access)
+$targetAcl = [System.IO.File]::GetAccessControl($env:BAZE_BRIDGE_ACL_TARGET, $access)
 $targetAcl.SetSecurityDescriptorSddlForm($sourceAcl.GetSecurityDescriptorSddlForm($access), $access)
-Set-Acl -LiteralPath $env:BAZE_BRIDGE_ACL_TARGET -AclObject $targetAcl
+[System.IO.File]::SetAccessControl($env:BAZE_BRIDGE_ACL_TARGET, $targetAcl)
 `;
+  const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toUpperCase() !== providerEnv));
   try {
-    execFileSync(shell, ['-NoProfile', '-NonInteractive', '-Command', script], {
-      env: { SystemRoot: systemRoot, BAZE_BRIDGE_ACL_SOURCE: source, BAZE_BRIDGE_ACL_TARGET: target },
+    execFileSync(shell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], {
+      env: { ...environment, BAZE_BRIDGE_ACL_SOURCE: source, BAZE_BRIDGE_ACL_TARGET: target },
       stdio: 'ignore',
-      timeout: 10000,
+      timeout: 20000,
       windowsHide: true,
     });
-  } catch {
+  } catch (error) {
+    if (error.code === 'ETIMEDOUT') throw new Error('Timed out while preserving the existing OpenCode configuration access rules.');
     throw new Error('Could not preserve the existing OpenCode configuration access rules.');
   }
 }
