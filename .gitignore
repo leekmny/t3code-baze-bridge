@@ -1,0 +1,9 @@
+node_modules/
+*.tgz
+.env
+.env.*
+opencode.json
+opencode.jsonc
+*.t3code-baze-bridge.lock
+*.t3code-baze-bridge.tmp
+npm-debug.log*
